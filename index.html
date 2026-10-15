@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es" translate="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="google" content="notranslate">
+  <meta name="theme-color" content="#173A6B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ejecución">
+  <title>Ejecución Sector 10</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <!-- Ingreso -->
+  <section id="pantalla-login" class="login" hidden>
+    <div class="login-caja">
+      <div class="logo">S/</div>
+      <h1>Seguimiento de la Ejecución Presupuestal</h1>
+      <p class="sub">Sector Educación · versión celular</p>
+      <form id="form-login" autocomplete="on">
+        <label>Correo<input id="l-correo" type="email" autocomplete="username" required></label>
+        <label>Contraseña<input id="l-clave" type="password" autocomplete="current-password" required></label>
+        <button class="btn-primario" type="submit">Ingresar</button>
+        <p id="l-error" class="error" hidden></p>
+      </form>
+      <button id="l-olvido" class="btn-link" type="button">¿Olvidó su contraseña?</button>
+    </div>
+  </section>
+
+  <!-- Nueva contraseña (cuando entra desde el correo de invitación o de recuperación) -->
+  <section id="pantalla-clave" class="login" hidden>
+    <div class="login-caja">
+      <div class="logo">S/</div>
+      <h1>Defina su contraseña</h1>
+      <form id="form-clave">
+        <label>Nueva contraseña (mínimo 8 caracteres)<input id="c-clave" type="password" minlength="8" autocomplete="new-password" required></label>
+        <button class="btn-primario" type="submit">Guardar y entrar</button>
+        <p id="c-error" class="error" hidden></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- Aplicación -->
+  <div id="app" hidden>
+    <header class="banda">
+      <div class="ic">S/</div>
+      <div class="banda-txt">
+        <div class="t">Ejecución Presupuestal</div>
+        <button id="btn-ambito" class="chip-ambito" type="button"></button>
+      </div>
+      <button id="btn-menu" class="btn-icono" aria-label="Menú" type="button">⋮</button>
+    </header>
+    <div id="menu" class="menu" hidden>
+      <div id="menu-usuario" class="menu-usuario"></div>
+      <button id="btn-actualizar" type="button">↻ Actualizar datos</button>
+      <button id="btn-salir" type="button">⎋ Cerrar sesión</button>
+    </div>
+    <p id="corte" class="corte"></p>
+    <main id="vista"></main>
+    <nav class="tabs">
+      <button data-vista="resumen" class="activo" type="button"><span>▦</span>Resumen</button>
+      <button data-vista="consulta" type="button"><span>⌥</span>Consulta</button>
+      <button data-vista="entidades" type="button"><span>▤</span>Entidades</button>
+      <button data-vista="historico" type="button"><span>↗</span>Histórico</button>
+    </nav>
+  </div>
+
+  <!-- Ámbito -->
+  <dialog id="dlg-ambito">
+    <form method="dialog" class="dlg">
+      <h3>Ámbito de análisis</h3>
+      <label>Año<select id="f-anio"></select></label>
+      <label>Pliego<select id="f-pliego"></select></label>
+      <label>Unidad ejecutora<select id="f-ue"></select></label>
+      <div class="dlg-botones">
+        <button value="cancelar" class="btn-sec">Cancelar</button>
+        <button id="f-aplicar" value="ok" class="btn-primario">Aplicar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="cargando" class="cargando" hidden><div class="spin"></div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
