@@ -126,3 +126,8 @@ dialog::backdrop { background: rgba(15,23,42,.45); }
   .kpis { grid-template-columns: repeat(3, 1fr); }
   .fila { grid-template-columns: minmax(0, 1fr) 100px 76px 76px; font-size: .85rem; }
 }
+
+/* dependencia de la oficina / centro de costo elegido */
+.dep-chip { margin: -4px 0 12px; padding: 8px 12px; border-radius: 12px; background: #EEF4FB; color: #173A6B;
+  font-size: .8rem; line-height: 1.3; text-align: left; }
+.dep-chip b { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: #64748B; }

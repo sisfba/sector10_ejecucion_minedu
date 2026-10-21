@@ -11,10 +11,11 @@ const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Set", "O
 const COLORES_ANIO = ["#F59E0B", "#2563EB", "#DC2626"]; // antepenúltimo ámbar, penúltimo azul, actual rojo
 const NIVELES = ["Genérica", "Subgenérica", "Subgenérica detalle", "Específica", "Específica detalle"];
 const GRUPOS = { "": "Todo el sector", U: "Universidades", M: "MINEDU y organismos públicos" };
+const PLIEGO_CC = "010"; // pliego cuyas metas tienen oficina y centro de costo
 
 const estado = {
-  anio: null, grupo: "", pliego: null, ue: null,
-  anios: [], cortes: {}, pliegos: [], ues: [],
+  anio: null, grupo: "", pliego: null, ue: null, oficina: null, cc: null,
+  anios: [], cortes: {}, pliegos: [], ues: [], ccs: [],
   vista: "resumen", ruta: [], entVista: "pliegos", cache: new Map(),
 };
 let graficos = [];
@@ -39,12 +40,31 @@ async function rpc(fn, args) {
   return data;
 }
 
+// centros de costo elegidos (los de la oficina, o uno solo); null = sin filtro
+function ccElegidos() {
+  if (estado.cc != null) return [estado.cc];
+  if (estado.oficina) return estado.ccs.filter((c) => c.oficina === estado.oficina).map((c) => c.cc);
+  return null;
+}
 function filtros(extra = {}) {
-  return { p_pliego: estado.pliego || null, p_sec: estado.ue || null, p_grupo: estado.grupo || null, ...extra };
+  const f = { p_pliego: estado.pliego || null, p_sec: estado.ue || null, p_grupo: estado.grupo || null, ...extra };
+  const cc = ccElegidos();
+  if (cc) f.p_cc = cc;
+  return f;
+}
+const nombreUe = (u) => (u.ejecutora ? u.ejecutora + "-" : "") + u.nombre;
+function nombreOrg() {
+  if (estado.cc != null) return (estado.ccs.find((c) => c.cc === estado.cc) || {}).centro_costo || "";
+  return estado.oficina || "";
 }
 
 function nombreAmbito() {
-  if (estado.ue) return (estado.ues.find((u) => u.sec_ejec === estado.ue) || {}).nombre || estado.ue;
+  const org = nombreOrg();
+  const base = nombreAmbitoBase();
+  return org ? `${base} · ${org}` : base;
+}
+function nombreAmbitoBase() {
+  if (estado.ue) { const u = estado.ues.find((x) => x.sec_ejec === estado.ue); return u ? nombreUe(u) : estado.ue; }
   if (estado.pliego) return (estado.pliegos.find((p) => p.pliego === estado.pliego) || {}).nombre || estado.pliego;
   return GRUPOS[estado.grupo];
 }
@@ -121,23 +141,30 @@ async function cargarCortes() {
 }
 
 async function cargarCatalogos() {
-  const [p, u] = await Promise.all([
+  const [p, u, c] = await Promise.all([
     sb.from("mv_pliego").select("pliego, nombre").eq("anio", estado.anio).order("pliego"),
-    sb.from("mv_ejecutora").select("sec_ejec, pliego, nombre").eq("anio", estado.anio).order("nombre"),
+    sb.from("mv_ejecutora").select("*").eq("anio", estado.anio).order("sec_ejec"),
+    sb.from("mv_centro_costo").select("cc, centro_costo, abreviatura, oficina, dependencia, ues").eq("anio", estado.anio).order("cc"),
   ]);
-  estado.pliegos = p.data || []; estado.ues = u.data || [];
+  estado.pliegos = p.data || []; estado.ues = (u.data || []).sort((a, b) => nombreUe(a).localeCompare(nombreUe(b), "es"));
+  estado.ccs = c.error ? [] : c.data || [];   // si la tabla aún no existe en la nube, la app sigue sin oficinas
   if (estado.pliego && !estado.pliegos.some((x) => x.pliego === estado.pliego)) estado.pliego = null;
   if (estado.ue && !estado.ues.some((x) => x.sec_ejec === estado.ue)) estado.ue = null;
+  if (estado.oficina && !estado.ccs.some((x) => x.oficina === estado.oficina)) estado.oficina = null;
+  if (estado.cc != null && !estado.ccs.some((x) => x.cc === estado.cc && x.oficina === estado.oficina)) estado.cc = null;
 }
 
 function guardarAmbito() {
-  try { localStorage.setItem("ambito", JSON.stringify({ anio: estado.anio, grupo: estado.grupo, pliego: estado.pliego, ue: estado.ue, vista: estado.vista })); } catch (_) {}
+  try { localStorage.setItem("ambito", JSON.stringify({ anio: estado.anio, grupo: estado.grupo, pliego: estado.pliego, ue: estado.ue,
+    oficina: estado.oficina, cc: estado.cc, vista: estado.vista })); } catch (_) {}
 }
 
 function pintarCabecera() {
   $("#btn-ambito").textContent = `${nombreAmbito()} · ${estado.anio ?? ""}`;
   const c = estado.cortes[estado.anio];
-  $("#corte").textContent = c ? `Fuente: SIAF-SP al ${fecha(c.fecha_corte)} · millones de S/` : "Sin datos cargados todavía.";
+  const org = estado.ccs.find((x) => (estado.cc != null ? x.cc === estado.cc : x.oficina === estado.oficina));
+  const dep = org && (estado.oficina || estado.cc != null) ? `Dependencia: ${org.dependencia} · ` : "";
+  $("#corte").textContent = c ? `${dep}Fuente: SIAF-SP al ${fecha(c.fecha_corte)} · millones de S/` : "Sin datos cargados todavía.";
 }
 
 // ------------------------------------------------------------------ menú y ámbito
@@ -163,19 +190,51 @@ function opcionesUe() {
   const lista = estado.ues.filter((u) => u.pliego === v.slice(2));
   s.disabled = lista.length < 2;
   s.innerHTML = `<option value="">Todas (pliego consolidado)</option>` +
-    lista.map((u) => `<option value="${u.sec_ejec}">${esc(u.nombre)}</option>`).join("");
+    lista.map((u) => `<option value="${u.sec_ejec}">${esc(nombreUe(u))}</option>`).join("");
   s.value = estado.ue && lista.some((u) => u.sec_ejec === estado.ue) ? estado.ue : "";
+}
+
+// Oficina y centro de costo (solo pliego 010): la dependencia se muestra al costado
+function ccsDisponibles() {
+  const v = $("#f-pliego").value, ue = $("#f-ue").value;
+  if (v !== "p:" + PLIEGO_CC) return [];
+  return estado.ccs.filter((c) => !ue || (c.ues || []).includes(ue));
+}
+function opcionesOrg(oficina = estado.oficina, cc = estado.cc) {
+  const lista = ccsDisponibles();
+  const caja = $("#f-org");
+  caja.hidden = lista.length < 2;
+  if (caja.hidden) { $("#f-oficina").innerHTML = ""; $("#f-cc").innerHTML = ""; $("#f-dep").hidden = true; return; }
+  const deps = [...new Set(lista.map((c) => c.dependencia))].sort((a, b) => a.localeCompare(b, "es"));
+  const so = $("#f-oficina");
+  so.innerHTML = `<option value="">Todas las oficinas</option>` + deps.map((d) => {
+    const ofs = [...new Set(lista.filter((c) => c.dependencia === d).map((c) => c.oficina))].sort((a, b) => a.localeCompare(b, "es"));
+    return `<optgroup label="${esc(d)}">${ofs.map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join("")}</optgroup>`;
+  }).join("");
+  so.value = oficina && lista.some((c) => c.oficina === oficina) ? oficina : "";
+  const delOf = lista.filter((c) => c.oficina === so.value);
+  const sc = $("#f-cc");
+  sc.disabled = !so.value || delOf.length < 2;
+  sc.innerHTML = `<option value="">${so.value ? "Todos los centros de costo" : "Elija primero una oficina"}</option>` +
+    delOf.map((c) => `<option value="${c.cc}">${esc(c.abreviatura && c.abreviatura.toUpperCase() !== c.centro_costo.toUpperCase()
+      ? c.abreviatura + " · " + c.centro_costo : c.centro_costo)}</option>`).join("");
+  sc.value = cc != null && delOf.some((c) => c.cc === cc) ? String(cc) : "";
+  const elegido = delOf[0];
+  $("#f-dep").hidden = !elegido;
+  if (elegido) $("#f-dep").innerHTML = `<b>Dependencia</b>${esc(elegido.dependencia)}`;
 }
 
 $("#btn-ambito").addEventListener("click", () => {
   $("#f-anio").innerHTML = estado.anios.map((a) => `<option>${a}</option>`).join("");
   $("#f-anio").value = estado.anio;
-  opcionesPliego(); opcionesUe();
+  opcionesPliego(); opcionesUe(); opcionesOrg();
   $("#dlg-ambito").showModal();
 });
-$("#f-pliego").addEventListener("change", opcionesUe);
+$("#f-pliego").addEventListener("change", () => { opcionesUe(); opcionesOrg(); });
+$("#f-ue").addEventListener("change", () => opcionesOrg($("#f-oficina").value || null, null));
+$("#f-oficina").addEventListener("change", () => opcionesOrg($("#f-oficina").value || null, null));
 $("#f-anio").addEventListener("change", async () => {
-  estado.anio = +$("#f-anio").value; await cargarCatalogos(); opcionesPliego(); opcionesUe();
+  estado.anio = +$("#f-anio").value; await cargarCatalogos(); opcionesPliego(); opcionesUe(); opcionesOrg();
 });
 $("#dlg-ambito").addEventListener("close", async () => {
   if ($("#dlg-ambito").returnValue !== "ok") return;
@@ -183,6 +242,9 @@ $("#dlg-ambito").addEventListener("close", async () => {
   estado.grupo = v.startsWith("g:") ? v.slice(2) : "";
   estado.pliego = v.startsWith("p:") ? v.slice(2) : null;
   estado.ue = estado.pliego ? $("#f-ue").value || null : null;
+  const conOrg = !$("#f-org").hidden;
+  estado.oficina = conOrg ? $("#f-oficina").value || null : null;
+  estado.cc = conOrg && $("#f-cc").value ? +$("#f-cc").value : null;
   estado.anio = +$("#f-anio").value;
   estado.ruta = [];
   guardarAmbito(); pintarCabecera();
@@ -330,13 +392,16 @@ async function vEntidades() {
   const porPliego = !estado.pliego && estado.entVista === "pliegos";
   const datos = porPliego
     ? await rpc("mv_por_pliego", { p_anio: estado.anio, p_grupo: estado.grupo || null })
-    : await rpc("mv_por_ue", { p_anio: estado.anio, p_pliego: estado.pliego || null, p_grupo: estado.grupo || null });
+    : await rpc("mv_por_ue", { p_anio: estado.anio, p_pliego: estado.pliego || null, p_grupo: estado.grupo || null,
+        ...(ccElegidos() ? { p_cc: ccElegidos() } : {}) });
   const filas = datos.map((r) => ({ nombre: r.nombre, sub: porPliego ? "Pliego " + r.pliego : null, pim: r.pim,
     compromiso: r.compromiso, devengado: r.devengado, clave: porPliego ? r.pliego : r.sec_ejec, pliego: r.pliego }));
   const t = tabla(filas, { titulo: porPliego ? "Pliego" : "Unidad ejecutora",
     alPulsar: async (f) => {
-      if (porPliego) { estado.pliego = f.clave; estado.grupo = ""; estado.ue = null; }
-      else { estado.pliego = f.pliego; estado.ue = f.clave; estado.grupo = ""; }
+      if (porPliego) { estado.pliego = f.clave; estado.grupo = ""; estado.ue = null; estado.oficina = null; estado.cc = null; }
+      else { estado.pliego = f.pliego; estado.ue = f.clave; estado.grupo = "";
+        const cc = ccElegidos();   // si la oficina / centro de costo no existe en esa UE, se quita el filtro
+        if (cc && !estado.ccs.some((c) => cc.includes(c.cc) && (c.ues || []).includes(f.clave))) { estado.oficina = null; estado.cc = null; } }
       guardarAmbito(); pintarCabecera(); cargando(true); await mostrar("resumen"); cargando(false); scrollTo(0, 0);
     } });
   const seg = estado.pliego ? "" : `<div class="segmento">
